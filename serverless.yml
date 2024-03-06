@@ -1,0 +1,87 @@
+service: ms-payment-bank-sandbox
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: provided.al2023
+  architecture: arm64
+  stage: dev
+  timeout: 29
+  logRetentionInDays: 7
+  environment:
+    REGION: us-east-1
+    BANK_DYNAMODB: ${self:resources.Resources.bank.Properties.TableName}
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource:
+        - "arn:aws:dynamodb:${self:provider.environment.REGION}:*:table/${self:provider.environment.BANK_DYNAMODB}"
+
+custom:
+  version: v1
+
+package:
+  individually: true
+
+functions:
+  createBank:
+    handler: bootstrap
+    architecture: arm64
+    events:
+      - http:
+          path: ${self:custom.version}/bank/account
+          method: post
+    package:
+      artifact: bin/cmd/createBankHandler/createBankHandler.zip
+
+  getBank:
+    handler: bootstrap
+    architecture: arm64
+    events:
+      - http:
+          path: ${self:custom.version}/bank/account/{bankID}
+          method: get
+    package:
+      artifact: bin/cmd/getBankHandler/getBankHandler.zip
+
+  updateBank:
+    handler: bootstrap
+    architecture: arm64
+    events:
+      - http:
+          path: ${self:custom.version}/bank/account
+          method: put
+    package:
+      artifact: bin/cmd/updateBankHandler/updateBankHandler.zip
+
+resources:
+  Resources:
+    bank:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        TableName: ${self:service}-${self:provider.stage}-bank
+        AttributeDefinitions:
+          - AttributeName: bankID #key or primary key
+            AttributeType: S #Data type
+          - AttributeName: accountID
+            AttributeType: S #Data type
+        KeySchema:
+          - AttributeName: bankID
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: accountIDIndex
+            KeySchema:
+              - AttributeName: accountID
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+        BillingMode: PAY_PER_REQUEST
